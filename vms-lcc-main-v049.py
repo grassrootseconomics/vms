@@ -523,7 +523,8 @@ def toggleBprotocolMode(onswitch):
                 le.image = newImage
 
         for tt in traders:
-            tt.preferedToken = None
+            if tt.ownToken == False:
+                tt.preferedToken = None
     elif bprotocolMode == True:
         for le in legendSprites:
             if le.legendType == utils.EXCHANGE:
@@ -536,7 +537,9 @@ def toggleBprotocolMode(onswitch):
         for tt in traders:
             topBal = 0
             topToken = None
+            tt.preferedToken = None
             for cci in tt.cc:
+
                 if cci.balance > topBal and cci.token.trading:
                     topBal = cci.balance
                     topToken = cci.token
@@ -1027,10 +1030,10 @@ def generateTradeBuddies(playerList):
         while len(dude.tradeBuddies) < dude.numTradePartners and currentSearchSize < MAXNEIGHBORSEARCHSIZE:
 
             neighborLen = len(neighborsList)-1
-            print ("neighbors: ", neighborLen)
+            #print ("neighbors: ", neighborLen)
 
             if neighborLen <1:
-                print (currentSearchSize, " search size2")
+                #print (currentSearchSize, " search size2")
 
                 #neighborsList = generateTradeNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners)
                 currentSearchSize = currentSearchSize+NEIGHBORSEARCHSIZE
@@ -1900,6 +1903,24 @@ class Trader:
             if len(self.tradeInfo) > 18:
                 del self.tradeInfo[18:]
 
+    def convertAllCC(self,destToken,tokenList,deleteDest):
+        #traderRem = self
+                    #remove traders tokens from circulation or sell back to SC
+        for wtkn in self.cc:
+            #print ("pre remove token:", utils.currencyTypeToString(wtkn.token.tokenID), "bal:", wtkn.balance,wtkn.token.price)
+            if wtkn.token.tokenID != destToken.tokenID:
+                if utils.convert(wtkn.balance,wtkn.token,destToken):
+                    wtkn.balance = 0
+                    #print ("post remove token:", utils.currencyTypeToString(wtkn.token.tokenID), "bal:", wtkn.balance, wtkn.token.price)
+                else:
+                    print("convert Fail 1")
+
+        if deleteDest == True:
+            for wtkn in self.cc:
+                if wtkn.token.tokenID == destToken.tokenID:
+                    wtkn.balance = 0
+                    print("remove destToken itself():", utils.currencyTypeToString(wtkn.token.tokenID))
+
     def addTrade(self,tt):
         if self.subType != utils.BANK:
             self.trades.append(tt)
@@ -2107,7 +2128,7 @@ class Trader:
             self.numtradepartners=MAXTRADERS-1
             self.image = coopServicesShopImage
 
-            initialCC = 100
+            initialCC = 10000
             if masterWallet.balance <initialCC:
                 initalCC = masterWallet.balance
             self.cc.append(WalletToken(reserveToken,initialCC))
@@ -2181,7 +2202,7 @@ class Trader:
             self.originalRingColor = GREEN
             self.numtradepartners=MAXTRADERS-1
             self.image = coopProductionShopImage
-            initialCC = 100
+            initialCC = 10000
             if masterWallet.balance <initialCC:
                 initalCC = masterWallet.balance
             self.cc.append(WalletToken(reserveToken,initialCC))
@@ -3087,11 +3108,12 @@ class Trader:
                     myProfit = self.nc
 
                 #take my total CCValue convert all tokens to parent and use it as a reserve
-                value = 0
+                valueRes = 0
                 for cci in self.cc:
-                    value = value+cci.getValue()
+                    if cci.token.tokenID == utils.reserveTokenID:
+                        valueRes += cci.getValue()
                     #print("value:"+str(value))
-                moreCC = self.getCCValue()*100/(defaultCW)
+                moreCC = valueRes/(defaultCW)
                 #print(">>>>>ISSUING",moreCC,utils.traderTypeToString(self.subType),self.tIndex,self.tradeNum)
 
                 lastTokenID = lastTokenID+1
@@ -3445,6 +3467,10 @@ while runSim:
                     #importMode = not importMode
                     toggleBprotocolMode(bprotocolMode)
 
+                elif event.key == pygame.K_d: #defualting /// sell off CC
+                    if clickedTrader<  len(traders) and clickedTrader>= 0:
+                        traders[clickedTrader].convertAllCC(reserveToken,tokens,True)
+
 
 
                 elif event.key == pygame.K_i:
@@ -3634,7 +3660,7 @@ while runSim:
                             tss.tIndex = traders.index(tss)
 
                         generateTradeBuddies(traders)
-                        print("ReGenerating  Buddies 1")
+                        #print("ReGenerating  Buddies 1")
 
                     break
 
@@ -3812,6 +3838,9 @@ while runSim:
                 if traders[clickedTrader].rect.left < INFOWIDTH:
                     #print("location"+str(traders[clickedTrader].rect.left))
                     #print("b len: "+str(len(traders)))
+                    traderRem =traders[clickedTrader]
+
+                    traderRem.convertAllCC(reserveToken,tokens,True)
 
                     del traders[clickedTrader].trades[:]
                     traders[clickedTrader].trades = []
@@ -3831,6 +3860,7 @@ while runSim:
                         pRETAIL = pRETAIL - 1
                     elif straderType == utils.FOREIGNRETAIL:
                         pFOREIGNRETAIL = pFOREIGNRETAIL - 1
+
 
 
 
@@ -3880,7 +3910,7 @@ while runSim:
                     traders[clickedTrader].tradeBuddies = []
 
                 generateTradeBuddies(traders)
-                print("ReGenerating 2")
+                #print("ReGenerating 2")
 
                 if clickedTrader >= len(traders):
                     clickedTrader = 1
@@ -4261,7 +4291,7 @@ while runSim:
                 cOffsettingX = cOffsettingX +4
                 cOffseting = cOffseting + 1*cOffInc
                 for tt in tokens:
-                    drawText('TokenID: %s cw: %.1f Supply: %0.1f Price: %0.2f Value: %0.1f' % (tt.tokenID,tt.cw,tt.supply,tt.price,tt.price*tt.supply), fontTrInfo, background, cOffsettingX, cOffseting)
+                    drawText('ID:%s cw: %s%% Supply: %1.0f Price: %0.2f Value: %0.1f' % (tt.tokenID,int(tt.cw*100),tt.supply,tt.price,tt.price*tt.supply), fontTrInfo, background, cOffsettingX, cOffseting)
                     foundTS = False
                     for ts in tokenSprites:
                         if ts.legendType == tt.tokenID:
@@ -4362,7 +4392,8 @@ while runSim:
                     cOffseting = cOffseting + 1*cOffInc
 
                     for tks in cTraderSelf.cc:
-                        drawText('TokenID: %s Balance: %0.1f Price: %0.2f Value: %0.1f' % (tks.token.tokenID,tks.balance,tks.token.price,tks.token.price*tks.balance), fontTrInfo, background, cOffsettingX, cOffseting)
+                        drawText('ID: %s Balance: %0.1f Price: %0.2f Value: %0.1f' % (tks.token.tokenID,tks.balance,tks.token.price,tks.token.price*tks.balance), fontTrInfo, background, cOffsettingX, cOffseting)
+                        background.blit(tks.token.spriteImg, (cOffsettingX-10, cOffseting))
                         cOffseting = cOffseting + cOffInc
 
 

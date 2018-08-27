@@ -176,24 +176,44 @@ def writeVideo():
     sp.call(["avconv","-y","-r",str(fps),"-i", "./plotsv4/myfile_%05d.png","-vcodec","mpeg4", "-qscale","5", "-r", str(fps), "video.avi"])
 
 def convert(amount,fromToken,toToken):
-    #print(">>pre convert utils: amount:",amount," from:",fromToken.price," to:",toToken.price)
+    #print(">>pre convert utils: amount:",amount," from:",fromToken.price," to:",toToken.price, )
+    #print("     >>supply:",fromToken.supply," connectorBalance:",fromToken.connectorBalance )
+
+    if amount >= fromToken.connectorBalance:
+        amount = fromToken.connectorBalance - 0.00000001
+        #print("adjust amount on convert")
     purchaseReturn = fromToken.supply * ((1 + (-1)*amount / fromToken.connectorBalance) ** (fromToken.cw ) - 1)
     #print("purchaseReturn",purchaseReturn)
     if isinstance(purchaseReturn, complex):
+        print("Complex error (from)")
         return False
     newSupply = fromToken.supply + purchaseReturn
     newConnectorBalance = fromToken.connectorBalance-amount
     newPrice = newConnectorBalance/(newSupply*fromToken.cw)
 
+    tpurchaseReturn = 0
 
+    if toToken.connectorBalance != 0:
 
-    tpurchaseReturn = toToken.supply * ((1 + amount / toToken.connectorBalance) ** (toToken.cw) - 1)
+        if amount / toToken.connectorBalance <= -1:
+            amount = -1*toToken.connectorBalance + 0.0000001
+            print("adjust amount on convert B")
+        tpurchaseReturn = toToken.supply * ((1 + amount / toToken.connectorBalance) ** (toToken.cw) - 1)
+        if isinstance(tpurchaseReturn, complex):
+            print("Complex error (to)")
+            return False #negative amount
+        tnewSupply = toToken.supply + tpurchaseReturn
+        tnewConnectorBalance = toToken.connectorBalance+amount
+        tnewPrice = tnewConnectorBalance/(tnewSupply*toToken.cw)
+
+    else: #we are converting to a top level reserve with no connector
+        print("convert to top level: purchaseReturn:", currencyTypeToString(toToken.tokenID))
+        tpurchaseReturn = amount
+        tnewSupply = toToken.supply + tpurchaseReturn
+        tnewConnectorBalance = 0
+        tnewPrice = 1
+
     #print("tpurchaseReturn",tpurchaseReturn)
-    if isinstance(tpurchaseReturn, complex):
-        return False
-    tnewSupply = toToken.supply + tpurchaseReturn
-    tnewConnectorBalance = toToken.connectorBalance+amount
-    tnewPrice = tnewConnectorBalance/(tnewSupply*toToken.cw)
 
     fromValueDiffBefore = fromToken.price * amount
 
