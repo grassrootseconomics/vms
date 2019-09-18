@@ -51,7 +51,7 @@ clientsModeB=False
 seedingMode = False
 autoMode = False#True #runs through several iterations of the simulation
 clearingMode = True#False
-bprotocolMode = False
+bondingMode = False
 
 NCHEAT = True
 CCHEAT = True
@@ -511,11 +511,11 @@ def toggleExportMode(onswitch):
     print ("Adjust export Mode", exportMode)
 
 
-def toggleBprotocolMode(onswitch):
-    global bprotocolMode
+def toggleBondingMode(onswitch):
+    global bondingMode
     global curveImage
-    bprotocolMode = onswitch
-    if bprotocolMode == False:
+    bondingMode = onswitch
+    if bondingMode == False:
         for le in legendSprites:
             if le.legendType == utils.EXCHANGE:
                 newImage = pygame.image.load('curve.png').convert_alpha()
@@ -525,12 +525,12 @@ def toggleBprotocolMode(onswitch):
         for tt in traders:
             if tt.ownToken == False:
                 tt.preferedToken = None
-    elif bprotocolMode == True:
+    elif bondingMode == True:
         for le in legendSprites:
             if le.legendType == utils.EXCHANGE:
-                newImage = pygame.image.load('curve.png').convert_alpha()
+                newImage = pygame.image.load('curve2.png').convert_alpha()
                 #newImage = pygame.transform.rotozoom(newImage, 0, 1.6)
-                utils.fill(newImage,pygame.Color(3, 67, 200, 100))
+                #utils.fill(newImage,pygame.Color(3, 67, 100, 50))
                 curveImage = newImage
                 le.image = newImage
 
@@ -549,7 +549,7 @@ def toggleBprotocolMode(onswitch):
 
 
 
-    print ("Adjust bprotocol Mode", bprotocolMode)
+    print ("Adjust bondingMode", bondingMode)
 
 def toggleSeasonalMode(onswitch):
     global seasonalMode
@@ -2976,7 +2976,7 @@ class Trader:
                                     if cci.token.trading == True and tradeCCAmt >= 1:
                                         #print("I'm in",cci.token.trading, "coop",self.coop)
                                         if cci.getValue() >= tradeCCAmt and cci.token.tokenID != preferedToken.tokenID:
-                                            if bprotocolMode == False: #no conversion
+                                            if bondingMode == False: #no conversion
                                                 continue
                                             numTokens = tradeCCAmt/cci.token.price
                                             #print("pre convert a: from:",cci.balance,cci.token.price," to:",preferedToken.price,"numTokens: ",numTokens,"tradeCCAmt",tradeCCAmt)
@@ -3005,7 +3005,7 @@ class Trader:
                                                 #print("post convert a: from:",cci.balance,cci.token.price," to:",preferedToken.price,"numTokens: ",numTokens,"tradeCCAmt",tradeCCAmt)
                                         elif cci.getValue() < tradeCCAmt and cci.getValue() >= 1 and cci.token.tokenID != preferedToken.tokenID:
                                             #print("pre convert b: from:",cci.token.price," to:",preferedToken.price)
-                                            if bprotocolMode == False:
+                                            if bondingMode == False:
                                                 continue
 
                                             if utils.convert(cci.balance,cci.token, preferedToken):
@@ -3137,7 +3137,7 @@ class Trader:
                 self.cc.append(wToken)
 
                 self.ownToken = True#False
-                #if bprotocolMode:
+                #if bondingMode:
                 self.preferedToken = newToken
 
                 #self.cc+4*(self.stock+self.services)
@@ -3463,9 +3463,9 @@ while runSim:
                     toggleExportMode(exportMode)
 
                 elif event.key == pygame.K_b:
-                    bprotocolMode = not bprotocolMode #exportTrader start
+                    bondingMode = not bondingMode #exportTrader start
                     #importMode = not importMode
-                    toggleBprotocolMode(bprotocolMode)
+                    toggleBondingMode(bondingMode)
 
                 elif event.key == pygame.K_d: #defualting /// sell off CC
                     if clickedTrader<  len(traders) and clickedTrader>= 0:
@@ -3720,9 +3720,9 @@ while runSim:
                 for s in legendSprites:
                     if s.rect.collidepoint(event.pos) and s.legendType == utils.EXCHANGE:
 
-                        bprotocolMode = not bprotocolMode #exportTrader start
-                        toggleBprotocolMode(bprotocolMode)
-                        print("BANCOR PICK")
+                        bondingMode = not bondingMode #exportTrader start
+                        toggleBondingMode(bondingMode)
+                        print("Bonding Curve PICK")
                         break
 
 
