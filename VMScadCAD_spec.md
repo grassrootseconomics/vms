@@ -1,3 +1,24 @@
+<!----- Conversion time: 3.368 seconds.
+
+
+Using this Markdown file:
+
+1. Cut and paste this output into your source file.
+2. See the notes and action items below regarding this conversion run.
+3. Check the rendered output (headings, lists, code blocks, tables) for proper
+   formatting and use a linkchecker before you publish this page.
+
+Conversion notes:
+
+* Docs to Markdown version 1.0β17
+* Sat Oct 19 2019 01:54:42 GMT-0700 (PDT)
+* Source doc: https://docs.google.com/a/grassecon.org/open?id=1EX2V_Q5MY9P2jkIdvSdj1wwpYFhHkHNkxSmDBbJD4-o
+* This document has images: check for >>>>>  gd2md-html alert:  inline image link in generated source and store images to your server.
+
+WARNING:
+You have 5 H1 headings. You may want to use the "H1 -> H2" option to demote all headings by one level.
+
+----->
 
 
 <p style="color: red; font-weight: bold">>>>>>  gd2md-html alert:  ERRORs: 0; WARNINGs: 1; ALERTS: 3.</p>
