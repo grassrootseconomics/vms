@@ -1,4 +1,4 @@
-"""vmsutilsv043: Village Market Simulator Utility Funcations.
+"""vmsutilsv: Village Market Simulator Utility Functions.
 Original Author: William O. Ruddick
 Date: May-18-2018
 """
@@ -174,6 +174,147 @@ def writeVideo():
     #pipe.proc.stdin.write( image_array.tostring() )
     fps = 50#24
     sp.call(["avconv","-y","-r",str(fps),"-i", "./plotsv4/myfile_%05d.png","-vcodec","mpeg4", "-qscale","5", "-r", str(fps), "video.avi"])
+
+
+def mintToken(deposit,toToken):
+
+    if toToken.connectorBalance != 0:
+
+
+        tokensMinted = toToken.supply*((1+deposit /toToken.connectorBalance ) ** (toToken.cw )-1)
+
+        if isinstance(tokensMinted, complex):
+            print("Complex error (from) mintToken")
+            return False
+
+
+        newSupply = toToken.supply + tokensMinted
+        newConnectorBalance = toToken.connectorBalance+deposit
+        newPrice = newConnectorBalance/(newSupply*toToken.cw)
+
+        toToken.supply = newSupply
+        toToken.connectorBalance = newConnectorBalance
+        toToken.price = newPrice
+
+    else:
+        print("Error xyz123")
+
+    return tokensMinted
+
+def pullReserve(withdraw,fromToken):
+
+    if withdraw <0 :
+        print("Error withdraw amount should be positive")
+    if fromToken.connectorBalance != 0:
+
+
+        reservePulledOut = fromToken.connectorBalance *( (1+-1*float(withdraw) / fromToken.supply) ** (1 / fromToken.cw)-1)
+
+        if isinstance(reservePulledOut, complex):
+            print("Complex error (from) pullReserve")
+            return False
+
+
+        newSupply = fromToken.supply - withdraw
+        newConnectorBalance = fromToken.connectorBalance+reservePulledOut
+        newPrice = newConnectorBalance/(newSupply*fromToken.cw)
+
+        fromToken.supply = newSupply
+        fromToken.connectorBalance = newConnectorBalance
+        fromToken.price = newPrice
+
+    else:
+        print("Error xyz123")
+
+    return -1*reservePulledOut
+
+
+
+def convertPure(amount,fromToken,toToken):
+    #print(">>pre convert utils: amount:",amount," from:",fromToken.price," to:",toToken.price, )
+    #print("     >>supply:",fromToken.supply," connectorBalance:",fromToken.connectorBalance )
+    purchaseReturn = 0
+    if fromToken.connectorBalance != 0 and toToken.connectorBalance != 0:
+
+        if amount >= fromToken.connectorBalance:
+            amount = fromToken.connectorBalance - 0.00000001
+            #print("adjust amount on convert")
+
+        reservePulledOut = fromToken.connectorBalance * (1- (1-amount / fromToken.supply) ** (1/fromToken.cw ))
+
+        if isinstance(reservePulledOut, complex):
+            print("Complex error (from) convertPure a")
+            return False
+
+
+        newSupply = fromToken.supply - amount
+        newConnectorBalance = fromToken.connectorBalance-reservePulledOut
+        newPrice = newConnectorBalance/(newSupply*fromToken.cw)
+
+        purchaseReturn = toToken.supply * ((1 + reservePulledOut / toToken.connectorBalance) ** (toToken.cw ) - 1)
+
+
+        #print("purchaseReturn",purchaseReturn)
+
+        if isinstance(purchaseReturn, complex):
+            print("Complex error (from) convert Pure b")
+            return False
+
+
+        fromToken.supply = newSupply
+        fromToken.connectorBalance = newConnectorBalance
+        fromToken.price = newPrice
+
+        tnewSupply = toToken.supply + purchaseReturn
+        tnewConnectorBalance = toToken.connectorBalance+reservePulledOut
+        tnewPrice = tnewConnectorBalance/(tnewSupply*toToken.cw)
+
+        toToken.supply = tnewSupply
+        toToken.connectorBalance = tnewConnectorBalance
+        toToken.price = tnewPrice
+
+
+    else:
+        print("Converting to or from reserve")
+    if False:
+
+        newSupply = fromToken.supply + amount
+        fromToken.supply = newSupply
+        reservePulledOut = amount
+
+        if toToken.connectorBalance != 0:
+
+            if amount / toToken.connectorBalance <= -1:
+                amount = -1*toToken.connectorBalance + 0.0000001
+                print("adjust amount on convert B")
+            purchaseReturn = toToken.supply * ((1 + reservePulledOut / fromToken.connectorBalance) ** (fromToken.cw) - 1)
+
+            # print("purchaseReturn",purchaseReturn)
+
+            if isinstance(purchaseReturn, complex):
+                print("Complex error (from)")
+                return False
+
+            tnewSupply = toToken.supply + purchaseReturn
+            tnewConnectorBalance = toToken.connectorBalance+reservePulledOut
+            tnewPrice = tnewConnectorBalance/(tnewSupply*toToken.cw)
+
+        else: #we are converting to a top level reserve with no connector
+            #print("convert to top level: purchaseReturn:", currencyTypeToString(toToken.tokenID))
+            #tpurchaseReturn = purchaseReturn
+            tnewSupply = toToken.supply
+            tnewConnectorBalance = 0
+            tnewPrice = 1
+
+        #print("tpurchaseReturn",tpurchaseReturn)
+
+
+        #print("fromDiff:" ,fromValueDiffAfter - fromValueDiffBefore)
+
+
+
+    return purchaseReturn
+
 
 def convert(amount,fromToken,toToken):
     #print(">>pre convert utils: amount:",amount," from:",fromToken.price," to:",toToken.price, )

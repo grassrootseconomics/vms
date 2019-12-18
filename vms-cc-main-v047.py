@@ -2828,7 +2828,7 @@ class Trader:
 
     #General trade and converstion to CC
     def logistics(self):
-        global cycles
+        global cycles, theTradeBuddy
         alreadyImporting = False
         alreadyBanking = False
         if len(self.trades) > 0:

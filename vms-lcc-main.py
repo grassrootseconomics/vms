@@ -20,7 +20,7 @@ import numpy as np
 
 import matplotlib.cm as cm
 import matplotlib.cm as mpl
-import vmsutilsv049 as utils
+import vmsutils as utils
 import colormaps as cmaps
 import datetime
 from dateutil.relativedelta import relativedelta
@@ -51,7 +51,7 @@ clientsModeB=False
 seedingMode = False
 autoMode = False#True #runs through several iterations of the simulation
 clearingMode = True#False
-bondingMode = False
+bondingMode = True
 
 NCHEAT = True
 CCHEAT = True
@@ -74,18 +74,18 @@ if displayPlots == False:
 #pEXPORTSERVICE = 10
 
 ############SMALLMARKETNONLOCAL
-#pRETAIL = 5
-#pFOREIGNRETAIL = 5
-#pLOCALSERVICE = 5
-#pLOCALPRODUCER = 5
-#pEXPORTSERVICE = 5
+pRETAIL = 5
+pFOREIGNRETAIL = 5
+pLOCALSERVICE = 5
+pLOCALPRODUCER = 5
+pEXPORTSERVICE = 5
 #
 ############MARKET100
-pRETAIL = 20
-pFOREIGNRETAIL = 20
-pLOCALSERVICE = 10
-pLOCALPRODUCER = 10
-pEXPORTSERVICE = 40
+#pRETAIL = 20
+#pFOREIGNRETAIL = 20
+#pLOCALSERVICE = 10
+#pLOCALPRODUCER = 10
+#pEXPORTSERVICE = 40
 
 ############MARKET200
 #pRETAIL = 38
@@ -95,8 +95,8 @@ pEXPORTSERVICE = 40
 #pEXPORTSERVICE = 400
 
 #numStartSCoops = 0
-numStartSCoops = 2
-numStartPCoops = 2
+numStartSCoops = 1
+numStartPCoops = 0
 
 pNonAccepting = 0.1 #%
 pNonAcceptingStep = 0.1
@@ -1587,6 +1587,9 @@ class WalletToken:
     def getValue(self):
         return self.balance*self.token.price
 
+    def getPrice(self):
+        return self.token.price
+
 
 class Token:
     def __init__(self,tokenID, supply, connector, cw,trading,spriteImg):
@@ -1595,7 +1598,7 @@ class Token:
         self.supply = supply
         self.cw = cw
         self.spriteImg = spriteImg
-        self.connector = connector #if connector = null it is not convertable
+        self.connector = connector #if connector = null it is Kenyan shillings
         self.trading = trading
         if connector is None:
             self.connectorBalance = 0
@@ -1774,6 +1777,7 @@ class Trader:
         self.purchasesCC = 0
         self.deposits = 0
         self.clearingAmt = 0
+        self.clearingPercentage = 0.1
         self.salesNC = 0
         self.salesCC = 0
         self.numSalesNC = 0
@@ -1822,7 +1826,7 @@ class Trader:
         self.waitToDepositCycles = DAILYCYCLES*4 #weekly
         self.waitToLoanCycles =  DAILYCYCLES*7#monthly
         self.waitToImportCycles = DAILYCYCLES #exporting labor
-        self.waitToClearCycles =  DAILYCYCLES*7#monthly
+        self.waitToClearCycles =  DAILYCYCLES*7#weekly unless they are a coop
         self.waitToExportCyclesOrig = DAILYCYCLES*8 #exporting labor
         self.waitToExportCycles = self.waitToExportCyclesOrig #exporting labor
         self.waitToSwitchExportingModeCycles = int(DAILYCYCLES*15) #daily make 5 purchases per day
@@ -1876,6 +1880,7 @@ class Trader:
         self.purchasesCC = 0
         self.deposits = 0
         self.clearingAmt = 0
+        self.clearingPercentage = 0.1
         self.salesNC = 0
         self.salesCC = 0
         self.numSalesNC = 0
@@ -1903,18 +1908,41 @@ class Trader:
             if len(self.tradeInfo) > 18:
                 del self.tradeInfo[18:]
 
-    def convertAllCC(self,destToken,tokenList,deleteDest):
+    def convertAllCC(self,destToken):
         #traderRem = self
+        deleteDest = False
+        removeList = []
                     #remove traders tokens from circulation or sell back to SC
         for wtkn in self.cc:
             #print ("pre remove token:", utils.currencyTypeToString(wtkn.token.tokenID), "bal:", wtkn.balance,wtkn.token.price)
-            if wtkn.token.tokenID != destToken.tokenID:
-                if utils.convert(wtkn.balance,wtkn.token,destToken):
+            if wtkn.token.tokenID != destToken.tokenID and wtkn.token.tokenID != reserveToken.tokenID and wtkn.balance > 0:
+                wbal = wtkn.balance
+                if wbal < 0:
+                    print("error negative balance")
+                purchaseReturn = utils.convertPure(wtkn.balance,wtkn.token,destToken)
+
+                if purchaseReturn >0:
+                    for ccj in self.cc:
+                        if ccj.token.tokenID == destToken.tokenID:
+                            ccj.balance += purchaseReturn
+                            # print("*added Balance: ", ccj.balance)
+                            foundPref = True
+                            # print("Found")
+                            break
+                    if foundPref == False:
+                        # print("Not Founda")
+                        wToken = WalletToken(destToken, purchaseReturn)
+                        self.cc.append(wToken)
+
                     wtkn.balance = 0
+                    removeList.append(wtkn)
+
                     #print ("post remove token:", utils.currencyTypeToString(wtkn.token.tokenID), "bal:", wtkn.balance, wtkn.token.price)
                 else:
                     print("convert Fail 1")
 
+        for deltkn in removeList:
+            self.cc.remove(deltkn)
         if deleteDest == True:
             for wtkn in self.cc:
                 if wtkn.token.tokenID == destToken.tokenID:
@@ -2118,6 +2146,8 @@ class Trader:
 
         if self.coop==True:
             self.color=GREEN
+            self.clearingPercentage = 0.5
+            self.waitToClearCycles = DAILYCYCLES*30
             self.originalColor=GREEN
             #self.setSize(int(STARTSIZE*2))
             #self.shape=utils.BANKCIRCLE
@@ -2128,7 +2158,7 @@ class Trader:
             self.numtradepartners=MAXTRADERS-1
             self.image = coopServicesShopImage
 
-            initialCC = 10000
+            initialCC = 10000 #define issuance policy
             if masterWallet.balance <initialCC:
                 initalCC = masterWallet.balance
             self.cc.append(WalletToken(reserveToken,initialCC))
@@ -2193,6 +2223,8 @@ class Trader:
 
         if self.coop==True:
             self.color=GREEN
+            self.clearingPercentage = 0.5
+            self.waitToClearCycles = DAILYCYCLES*30
             self.originalColor=GREEN
             #self.setSize(int(STARTSIZE*2))
             #self.shape=utils.BANKCIRCLE
@@ -2779,7 +2811,7 @@ class Trader:
 
     #General trade and converstion to CC
     def logistics(self):
-        global cycles
+        global cycles, theTradeBuddy
         global lastTokenID
         global lastColorTokenIndex
         alreadyImporting = False
@@ -2887,6 +2919,19 @@ class Trader:
                 tradeCCAmt = 0
                 #print (" zself NC ",self.nc, " self CC", self.cc,  "tradeRand: ",tradeRand ,  " Add: ",tradeAddition, " tradeAmt: ", tradeAmt )
 
+                preferedToken = theTradeBuddy.preferedToken
+
+                if preferedToken == None and self.preferedToken is not None:
+                    theTradeBuddy.preferedToken = self.preferedToken
+                    theTradeBuddy.convertAllCC(self.preferedToken)
+                    self.convertAllCC(self.preferedToken)
+
+                elif preferedToken is not None and self.preferedToken is None:
+                    self.preferedToken = preferedToken
+                    self.convertAllCC(preferedToken)
+
+
+
 
                 if theTradeBuddy.subType != utils.FOREIGNRETAIL:
                     tradeNCAmt = tradeAmtOrig
@@ -2896,24 +2941,37 @@ class Trader:
 
                         #Try a division of the price between CC and NC
                         if self.getCCTradableValue()> 0:#  and theTradeBuddy.defaulting == False:
-                            if theTradeBuddy.subType !=utils.RETAIL: #local producer and services
-                                tradeCCAmt = ccLocalPercent*tradeAmtOrig
-                                tradeNCAmt = (1-ccLocalPercent)*tradeAmtOrig
-                                missingAmt = 0
-                                if tradeNCAmt > self.nc:
-                                    missingAmt = tradeNCAmt - self.nc
-                                    tradeCCAmt = tradeCCAmt + missingAmt
-                                if tradeCCAmt > self.getCCTradableValue():
-                                    missingAmt = tradeCCAmt - self.getCCTradableValue()
-                                    tradeNCAmt = tradeNCAmt + missingAmt
-
-                            else: #retail
+                            if theTradeBuddy.subType ==utils.RETAIL: #local producer and services
                                 tradeCCAmt = ccPercent*tradeAmtOrig
                                 tradeNCAmt = (1-ccPercent)*tradeAmtOrig
                                 if tradeNCAmt > self.nc:
-                                    tradeNCAmt = 0
-                                    tradeCCAmt = 0
+                                    tradeNCAmt = self.nc
+                                    tradeCCAmt = self.nc*ccPercent
 
+                            elif theTradeBuddy.subType !=utils.RETAIL: #local producer and services
+                                tradeCCAmt = ccLocalPercent*tradeAmtOrig
+                                tradeNCAmt = (1-ccLocalPercent)*tradeAmtOrig
+                                missingAmt = 0
+
+                                if tradeCCAmt > self.getCCTradableValue(): #not enough CC
+                                    missingAmt = tradeCCAmt-self.getCCTradableValue()
+
+                                    if self.cc[0].getPrice() <= 1: #convert from KSH to CC
+                                        convertAmt = missingAmt
+                                        if self.nc < missingAmt:
+                                            convertAmt = self.nc
+                                        tokens_minted = utils.mintToken(convertAmt, self.cc[0].token)
+                                        #print("Converted KSH to CC: ",convertAmt, tokens_minted, " newPrice: ", self.cc[0].getPrice())
+                                        self.cc[0].balance += tokens_minted
+                                        self.nc = self.nc - convertAmt
+                                        if self.cc[0].balance > tradeAmtOrig:
+                                            tradeCCAmt = tradeAmtOrig
+
+                                        missingAmt = tradeAmtOrig-tradeCCAmt
+                                        if self.nc >= missingAmt:
+                                            tradeNCAmt = missingAmt
+                                        else:
+                                            tradeNCAmt = self.nc
 
 
                 else: #trading with a FOREIGN RETAILER or a defaulter
@@ -2922,7 +2980,7 @@ class Trader:
                     if self.nc < tradeAmtOrig:
                         tradeNCAmt = self.nc
                         tradeCCAmt = 0
-                        #tradeNCAmt = 0
+
 
                 if self.subType == utils.RETAIL or self.coop:
                     myProfit = self.getCCTradableValue()-(self.STARTNC-self.nc)-(self.STARTSTOCK-self.stock)-self.debt
@@ -2953,7 +3011,20 @@ class Trader:
                         newTradeCC = None
                         #if not self.coop:
                             #print("non Coop: ", tradeCCAmt, len(self.cc), self.getCCValue())
-                        preferedToken = theTradeBuddy.preferedToken
+                        if preferedToken == None and self.preferedToken == None: #they should both only have reserve tokens
+                            for cci in self.cc:
+                                if cci.token.trading == True and tradeCCAmt >= 1:
+                                    # print("I'm in",cci.token.trading, "coop",self.coop)
+                                    if tradeCCAmt >0 and cci.getValue() > 0:
+                                        tmpTradeAmt = 0
+                                        if cci.getValue() >= tradeCCAmt:
+                                            tmpTradeAmt = tradeCCAmt
+                                        else:
+                                            tmpTradeAmt = cci.getValue()
+                                        newTradeCCa = Trade(cci.token.tokenID, tradeCCAmt, tradeType, self,
+                                                            theTradeBuddy, cci.token)
+                                        self.addTrade(newTradeCCa)
+                                        tradeCCAmt = tradeCCAmt - tmpTradeAmt
 
                         if preferedToken is not None:
 
@@ -2971,87 +3042,41 @@ class Trader:
                                         #print("Trade cc 2",tradeCCAmt)
                                         tradeCCAmt = tradeCCAmt - cci.getValue()
 
-                            if True and tradeCCAmt >= 1: #still missing
+                            if tradeCCAmt >= 1: #still missing
                                 for cci in self.cc:
-                                    if cci.token.trading == True and tradeCCAmt >= 1:
-                                        #print("I'm in",cci.token.trading, "coop",self.coop)
-                                        if cci.getValue() >= tradeCCAmt and cci.token.tokenID != preferedToken.tokenID:
-                                            if bondingMode == False: #no conversion
-                                                continue
+                                    if cci.token.trading == True and cci.getValue() >= 1 and cci.token.tokenID != preferedToken.tokenID and tradeCCAmt >0:
+                                            #if bondingMode == False: #no conversion
+                                            #    continue
+
                                             numTokens = tradeCCAmt/cci.token.price
+                                            if cci.balance <= numTokens:
+                                                numTokens = cci.balance
                                             #print("pre convert a: from:",cci.balance,cci.token.price," to:",preferedToken.price,"numTokens: ",numTokens,"tradeCCAmt",tradeCCAmt)
 
-                                            if utils.convert(numTokens,cci.token,preferedToken):
-
-
-                                                newTradeCCa = Trade(preferedToken.tokenID, tradeCCAmt, tradeType, self,theTradeBuddy, preferedToken)
-                                                self.addTrade(newTradeCCa)
+                                            purchaseReturn = utils.convertPure(numTokens, cci.token, preferedToken)
+                                            cci.balance = cci.balance - numTokens
+                                            #print("Conversion abc ", numTokens)
+                                            if purchaseReturn <=0:
+                                                print("Error in purchase return abc ", purchaseReturn)
+                                            else:
 
                                                 foundPref = False
                                                 for ccj in self.cc:
                                                     if ccj.token.tokenID == preferedToken.tokenID:
-                                                        ccj.balance += numTokens
+                                                        ccj.balance += purchaseReturn
                                                         #print("*added Balance: ", ccj.balance)
                                                         foundPref = True
                                                         #print("Found")
                                                         break
                                                 if foundPref == False:
                                                     #print("Not Founda")
-                                                    wToken = WalletToken(preferedToken,numTokens)
+                                                    wToken = WalletToken(preferedToken,purchaseReturn)
                                                     self.cc.append(wToken)
-
-                                                cci.balance = cci.balance-numTokens
-                                                tradeCCAmt = 0
-                                                #print("post convert a: from:",cci.balance,cci.token.price," to:",preferedToken.price,"numTokens: ",numTokens,"tradeCCAmt",tradeCCAmt)
-                                        elif cci.getValue() < tradeCCAmt and cci.getValue() >= 1 and cci.token.tokenID != preferedToken.tokenID:
-                                            #print("pre convert b: from:",cci.token.price," to:",preferedToken.price)
-                                            if bondingMode == False:
-                                                continue
-
-                                            if utils.convert(cci.balance,cci.token, preferedToken):
-                                                newTradeCCb = Trade(preferedToken.tokenID, cci.balance, tradeType, self, theTradeBuddy, preferedToken)
-                                                self.addTrade(newTradeCCb)
-                                                #print("Trade cc 2",tradeCCAmt)
-                                                tradeCCAmt = tradeCCAmt - cci.getValue()
-                                                foundPref = False
-                                                for ccj in self.cc:
-                                                    if ccj.token.tokenID == preferedToken.tokenID:
-                                                        ccj.balance += cci.balance
-                                                        #print("added Balance -b: ", ccj.balance)
-                                                        foundPref = True
-                                                        #print("Found")
-                                                        break
-
-                                                if foundPref == False:
-                                                    #print("Not Found1")
-                                                    wToken = WalletToken(preferedToken,cci.balance)
-                                                    self.cc.append(wToken)
-
-                                                cci.balance = 0
-
-                                                #print("Converted b: from:",cci.token.price," to:",preferedToken.price)
-                        if tradeCCAmt >= 1:
-
-                            for cci in self.cc:
-                                #print("I'm inAAA",cci.token.trading,cci.token.tokenID,"coop",self.coop)
-                                if cci.token.trading == True and tradeCCAmt >= 1 and preferedToken is None:
-                                    #print("I'm in",cci.token.trading, "coop",self.coop)
-                                    if cci.getValue() >= tradeCCAmt:
-                                        newTradeCCa = Trade(cci.token.tokenID, tradeCCAmt, tradeType, self, theTradeBuddy,cci.token)
-                                        self.addTrade(newTradeCCa)
-                                        #print("TradeCCA1",tradeCCAmt)
-                                        tradeCCAmt = 0
-                                    elif cci.getValue() < tradeCCAmt and cci.getValue() >= 1 and preferedToken is None:
-                                        newTradeCCb = Trade(cci.token.tokenID, cci.getValue(), tradeType, self, theTradeBuddy,cci.token)
-                                        self.addTrade(newTradeCCb)
-                                        #print("Trade cc 2",tradeCCAmt)
-                                        tradeCCAmt = tradeCCAmt - cci.getValue()
-                                    if tradeCCAmt>=1:
-                                        continue
+                                                newTradeCCa = Trade(preferedToken.tokenID, tradeCCAmt, tradeType, self,theTradeBuddy, preferedToken)
+                                                self.addTrade(newTradeCCa)
+                                                tradeCCAmt = tradeCCAmt - purchaseReturn
 
 
-
-                        # Trade(utils.CC,tradeCCAmt,tradeType,self,theTradeBuddy)
 
                         self.lastCCTradeCycle = cycles
 
@@ -3095,11 +3120,27 @@ class Trader:
                     #print (">2>2>Foreign Trader purchase  from theMarket amt: ", importAmt)
             #print ("Import Trade ", importAmt)
 
+        #CLEAR
+        #Cashing out convert CC to KSH is the price is good
+        if clearingMode and self.getCCValue()>0 and cycles - self.lastClearingCycle >= self.waitToClearCycles  and  alreadyBanking==False and self.subType != utils.FOREIGNRETAIL and self.clearingPercentage >0:
 
+            tknToClear = None
+            clearingTknAmt = 0
+            if self.preferedToken is not None:
+                self.convertAllCC(self.preferedToken)
+                if self.cc[0].getPrice() >= 1:  # convert from CC to KSH
+                    clearingTknAmt = int(round(self.cc[0].balance*self.clearingPercentage))
+
+                    if clearingTknAmt>=1:
+                        pulledRes = utils.pullReserve(clearingTknAmt,self.preferedToken)
+                        self.nc+=pulledRes
+                        self.cc[0].balance =self.cc[0].balance - clearingTknAmt
+                        #print("Pulled out Reserve: ", pulledRes, "New price: ", self.cc[0].getPrice())
+                        self.lastClearingCycle = cycles
 
         #ISSUE
-        #TAKE existing CC reserve and create a new Token  - only call once when profits are up
-        if self.coop and clearingMode and self.getCCValue()>0 and self.ownToken==False and cycles - self.lastClearingCycle >= self.waitToClearCycles  and self.nc>= AVGTRADE and alreadyBanking==False and self.subType != utils.FOREIGNRETAIL:
+        #TAKE existing NC reserve and create a new Token  - only call once when profits are up
+        if self.coop and clearingMode and self.getCCValue()>0 and self.ownToken==False and cycles > 100 and self.nc>= AVGTRADE and alreadyBanking==False and self.subType != utils.FOREIGNRETAIL:
 
             #myProfit = self.cc-(self.STARTNC-self.nc)-(self.STARTSTOCK-self.stock)-self.debt
             myProfit = self.getCCValue()-(self.STARTNC-self.nc)
@@ -3134,6 +3175,7 @@ class Trader:
 
                 tokens.append(newToken)
                 wToken = WalletToken(newToken,moreCC)
+                self.cc.clear()
                 self.cc.append(wToken)
 
                 self.ownToken = True#False
@@ -3143,8 +3185,6 @@ class Trader:
                 #self.cc+4*(self.stock+self.services)
                 #self.stock = self.stock+self.nc
                 #self.nc=0
-
-            self.lastClearingCycle = cycles
 
 
         #GROWSERVICES
@@ -3337,7 +3377,7 @@ lastColorTokenIndex = 0
 reserveSupply = 100000
 reserveToken = Token(utils.reserveTokenID,reserveSupply,None,None,False,ccImage)
 tokens.append(reserveToken)
-defaultCW = 0.5
+defaultCW = 0.25
 
 masterWallet = WalletToken(reserveToken,reserveSupply)
 
@@ -3653,7 +3693,7 @@ while runSim:
 
                         ai = 0
                         for tss in traders:
-                            print("r2d2:",ai)
+                            #print("r2d2:",ai)
                             ai+=1
                             del tss.tradeBuddies[:]
                             tss.tradeBuddies = []
@@ -3722,7 +3762,7 @@ while runSim:
 
                         bondingMode = not bondingMode #exportTrader start
                         toggleBondingMode(bondingMode)
-                        print("Bonding Curve PICK")
+                        print("Bonding Curve PICK: ", bondingMode)
                         break
 
 
@@ -3840,7 +3880,7 @@ while runSim:
                     #print("b len: "+str(len(traders)))
                     traderRem =traders[clickedTrader]
 
-                    traderRem.convertAllCC(reserveToken,tokens,True)
+                    traderRem.convertAllCC(reserveToken,tokens)
 
                     del traders[clickedTrader].trades[:]
                     traders[clickedTrader].trades = []
@@ -4291,7 +4331,12 @@ while runSim:
                 cOffsettingX = cOffsettingX +4
                 cOffseting = cOffseting + 1*cOffInc
                 for tt in tokens:
-                    drawText('ID:%s cw: %s%% Supply: %1.0f Price: %0.2f Value: %0.1f' % (tt.tokenID,int(tt.cw*100),tt.supply,tt.price,tt.price*tt.supply), fontTrInfo, background, cOffsettingX, cOffseting)
+                    if tt.tokenID == reserveToken.tokenID:
+                        continue
+                    #drawText('ID:%s cw: %s%% Supply: %1.0f Price: %0.2f Value: %0.1f' % (tt.tokenID,int(tt.cw*100),tt.supply,tt.price,tt.price*tt.supply), fontTrInfo, background, cOffsettingX, cOffseting)
+                    drawText('ID:%s cw: %s%% Reserve: %1.0f Supply: %1.0f Price: %0.2f Value: %1.0f' % (
+                    tt.tokenID, int(tt.cw * 100), tt.connectorBalance, tt.supply, tt.price, tt.price * tt.supply), fontTrInfo, background,
+                             cOffsettingX, cOffseting)
                     foundTS = False
                     for ts in tokenSprites:
                         if ts.legendType == tt.tokenID:
@@ -4386,7 +4431,7 @@ while runSim:
                     #cOffseting = cOffseting + cOffInc
 
                 if len(cTraderSelf.cc)>0:
-                    drawText('Tokens', fontTrInfo, background, cOffsettingX, cOffseting)
+                    drawText('Tokens pref: %s' % (cTraderSelf.preferedToken.tokenID), fontTrInfo, background, cOffsettingX, cOffseting)
 
                     cOffsettingX = cOffsettingX +4
                     cOffseting = cOffseting + 1*cOffInc
