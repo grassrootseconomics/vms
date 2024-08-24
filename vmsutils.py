@@ -6,6 +6,8 @@ Date: May-18-2018
 import numpy as np
 import pygame
 from scipy.interpolate import UnivariateSpline
+import math
+import networkx as nx
 
 NC = 181
 CC = 212 #default number - but increases in value for new CCs
@@ -31,6 +33,7 @@ LOCALPRODUCER = 77
 EXPORTSERVICE = 11
 LOCALSERVICECOOP = 222
 LOCALPRODUCERCOOP = 777
+MYCOAGENT = 888
 EXCHANGE = 9898
 
 #Trade Types tradeType
@@ -112,6 +115,8 @@ def traderTypeToString(iType):
         tttype = "LocalProducer"
     elif iType == EXPORTSERVICE:
         tttype = "ServiceExporter"
+    elif iType == MYCOAGENT:
+        tttype = "Swap Pool"
     return tttype
 
 #nonRandom Double-Shuffle
@@ -542,4 +547,117 @@ def tnorm(y, axis=0, step=1, k=3, smooth=0, mask=None, show=False, ax=None):
 
     return yn, tn
 
+
+def find_closest_agents(click_pos, num_closest, traders):
+    """
+    Find the closest agents to the click position, only considering agents whose names start with 'b'.
+
+    Parameters:
+    click_pos (tuple): The x, y position of the click.
+    num_closest (int): Number of closest agents to find.
+
+    Returns:
+    list: A list of the closest agents.
+    """
+    distances = []
+    for agent in traders:
+        if agent.ownToken == False: #they shold have their own voucher
+            continue
+        arect = agent.rect
+        pos = arect.center
+        
+        #global zpos  # Access the global variable
+        distance = (agent,math.hypot(pos[0] - click_pos[0], pos[1] - click_pos[1]))
+        distances.append(distance)
+    
+
+        # Filter agents whose names start with 'b' and calculate distances
+        #distances = [(name, math.hypot(pos[0] - click_pos[0], pos[1] - click_pos[1])) 
+                 #for name, pos in zpos.items() if name.startswith('b')]
+    if(len(distances) == 0):
+        return distances
+    if(len(distances) < num_closest):
+        num_closest = len(distances)
+
+    final_list = []
+    if(len(distances) >= 1):
+    
+        distances.sort(key=lambda x: x[1])  # Sort by distance
+        final_list = [name for name, _ in distances[:num_closest]]
+
+    # Return closest agent names, limited to num_closest
+    return final_list
+
+
+def make_graph(swap_pools):
+    # Create a graph of the swap pools
+    G = nx.Graph()
+    if swap_pools != None:        
+        for pool in swap_pools:
+            if pool.localSelling:
+                for v_i in pool.cc:
+                    G.add_node(v_i.token.tokenID)
+                    for other_v_i in pool.cc:
+                        if v_i != other_v_i:
+                            G.add_edge(v_i.token.tokenID, other_v_i.token.tokenID, pool=pool.tIndex)
+
+    return G
+
+    
+def find_feasible_paths(G, input_voucher, output_voucher, amount, max_path_length, swap_pools):
+
+    #print(G)
+    #print("Nodes in G:", G.nodes)
+    #print("Edges in G:", G.edges)
+
+    input_voucher_id = input_voucher.tokenID
+    output_voucher_id = output_voucher.tokenID
+    #print(f"Input voucher: {input_voucher_id}, Output voucher: {output_voucher_id}")
+
+    def dfs(current_voucher, target_voucher, path, visited):
+        if len(path) > max_path_length:
+            return
+        if current_voucher == target_voucher:
+            feasible_paths.append(list(path))
+            return
+        if current_voucher not in G:
+            print(f"Warning: {current_voucher} does not exist in the Graph")
+            return
+
+        for neighbor in G[current_voucher]:
+            pool_name = G[current_voucher][neighbor]['pool']
+
+            pool = next((p for p in swap_pools if p.tIndex == pool_name), None)
+            neighbor_balance = 0
+            if(pool != None):
+                 nWalletToken = next((t for t in pool.cc if t.token.tokenID == neighbor), None)
+                 if(nWalletToken != None):
+                     neighbor_balance = nWalletToken.balance
+                     if(neighbor_balance >= amount and neighbor not in visited):
+                        if pool.localSelling:
+                            #print("Neighbor: ", neighbor, "target: ",target_voucher)
+                            path.append(neighbor)
+                            visited.add(neighbor)
+                            dfs(neighbor, target_voucher, path, visited)
+                            path.pop()
+                            visited.remove(neighbor)
+
+    feasible_paths = []
+    visited = set([input_voucher_id])
+    dfs(input_voucher_id, output_voucher_id, [input_voucher_id], visited)
+    return feasible_paths
+
+# Function to print the path and SwapPools
+def print_exchange_route(G, path):
+    
+    if not path:
+        print("No exchange route found.")
+        return
+
+    #print("expanded exchange route: len:",range(len(path) - 1))
+    for i in range(len(path) - 1):
+        start_voucher, end_voucher = path[i], path[i + 1]
+        # Retrieve the pool name from the edge data
+        pool_name = G[start_voucher][end_voucher]['pool']
+        #print(f"Exchange {start_voucher} for {end_voucher} in {pool_name}")
 

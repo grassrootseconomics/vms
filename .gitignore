@@ -1,0 +1,15 @@
+pelican
+__pycache__
+*.pyc
+*.o
+output/
+node_modules/
+.venv/
+standalone-deploy/data/certbot
+.idea/
+public/
+*~
+'#
+#
+*#'
+'#*
