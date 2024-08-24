@@ -3536,7 +3536,7 @@ while tx*TILESIZE<HEATSUBWINDOWWIDTH:
 
 print ("Heatmap Surface dimensions NC: ", len(transSurfListNC), len(transSurfListNC[0]))
 
-topTitle = 'VMS-LiquidCC-v049'
+topTitle = 'VMS-Pooling-v1.6a'
 
 pygame.display.set_caption(topTitle)
 
