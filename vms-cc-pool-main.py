@@ -1036,12 +1036,12 @@ def generateTradeBuddies(playerList):
 
         #ensure that one of each type of partner exists
 
-        print("Finding Buddies1")
+        #print("Finding Buddies1")
 
         currentSearchSize = NEIGHBORSEARCHSIZE
         #neighborsList = generateTradeNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners) ######THE1
         neighborsList = generateNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners)
-        print("Finding Buddies2")
+        #print("Finding Buddies2")
         #print ("Neighbors: ",len(neighborsList))
         #for ne in neighborsList:
         #    print ("<>", traderTypeToString(ne.subType))
@@ -1049,19 +1049,19 @@ def generateTradeBuddies(playerList):
 
         #while len(dude.tradeBuddies) < dude.numTradePartners and len(neighborsList) >0 and currentSearchSize <= MAXNEIGHBORSEARCHSIZE:
         while len(dude.tradeBuddies) < dude.numTradePartners and currentSearchSize < MAXNEIGHBORSEARCHSIZE:
-            print("Finding Buddies3")
+            #print("Finding Buddies3")
 
             neighborLen = len(neighborsList)-1
             #print ("neighbors: ", neighborLen)
 
             if neighborLen <1:
-                print (currentSearchSize, " search size2")
+                #print (currentSearchSize, " search size2")
 
                 #neighborsList = generateTradeNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners)
                 currentSearchSize = currentSearchSize+NEIGHBORSEARCHSIZE
                 neighborsList = generateNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners)
 
-                print ("try again4")
+                #print ("try again4")
 
             if len(neighborsList) > 0:
                 newTradeBuddy = random.choice(neighborsList)#neighborsList[neighborIndex]#
@@ -1593,11 +1593,12 @@ class Trade:
                 elif(len(self.path)==1): #send to final Agent
                     #print("~~Path = 1 sending out the last trade on path")
                     end_voucher_id = self.path[0]
-                    end_agent = next(agent for agent in traders if agent.preferedToken.tokenID == end_voucher_id)
-
-                    newTradeCCa = Trade(self.path[0],self.money,self.tradeType,self.dest,end_agent,next_voucher.token,self.path)
-                    self.dest.addTrade(newTradeCCa)
-                    self.dest.lastCCTradeCycle = cycles
+                    for end_agent in traders:
+                        if(end_agent.preferedToken != None):
+                            if(end_agent.preferedToken.tokenID == end_voucher_id):
+                                newTradeCCa = Trade(self.path[0],self.money,self.tradeType,self.dest,end_agent,next_voucher.token,self.path)
+                                self.dest.addTrade(newTradeCCa)
+                                self.dest.lastCCTradeCycle = cycles
 
             return True
 
@@ -3194,6 +3195,11 @@ class Trader:
 
                 if(tradeCCAmt > 0):
 
+                    if(cycles - theTradeBuddy.lastNCTradeCycle >= theTradeBuddy.waitToTradeCycles*6):
+                        tradeCCAmt = int(tradeCCAmt/2)
+                    if(tradeCCAmt < 1):
+                        tradeCCAmt = 1
+                       
                     preferedToken = theTradeBuddy.preferedToken
                     #print("Try to make a CC trade!", tradeCCAmt)
 
@@ -3220,7 +3226,7 @@ class Trader:
                                     newTradeCCa = Trade(self.preferedToken.tokenID,tradeCCAmt,tradeType,self,pool,self.preferedToken,best_path)
                                     self.addTrade(newTradeCCa)
                                     self.lastCCTradeCycle = cycles
-                                    if(True): #debug on CC trade
+                                    if(False): #debug on CC trade
                                         print(utils.traderTypeToString(self.subType), "Made a CC Trade! to: ", utils.traderTypeToString(theTradeBuddy.subType), " amt: ", tradeCCAmt, " waiting: ", self.waitToTradeCycles, " seepdFactor: ", tradeSpeedFactor, " CC: ", self.getCCValue())
                                         totalCC = 0
                                         totalNC = 0
