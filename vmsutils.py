@@ -391,6 +391,35 @@ def calculatePurchaseReturn(supply, balance, weight, amount):
 def calculateSaleReturn(supply, balance, weight, amount):
     return balance * (1 - (1 - amount / supply) ** (1000000 / weight))
 
+def is_within_circle(mouse_x, mouse_y, center_x, center_y, radius):
+    return (mouse_x - center_x) ** 2 + (mouse_y - center_y) ** 2 <= radius ** 2
+
+#def find_midpoint(point1, point2):
+#    x1, y1 = point1
+#    x2, y2 = point2
+#    midpoint_x = (x1 + x2) / 2
+#    midpoint_y = (y1 + y2) / 2
+#    return (midpoint_x, midpoint_y)
+
+def find_midpoint(points):
+    # Initialize sums for x and y coordinates
+    sum_x = 0
+    sum_y = 0
+    
+    # Calculate the number of points
+    num_points = len(points)
+    
+    # Sum all the x and y coordinates
+    for point in points:
+        sum_x += point[0]
+        sum_y += point[1]
+    
+    # Calculate the midpoint
+    midpoint_x = sum_x / num_points
+    midpoint_y = sum_y / num_points
+    
+    return (midpoint_x, midpoint_y)
+
 
 def fill(surface, color):
     """Fill all pixels of the surface with color, preserve transparency."""

@@ -41,7 +41,7 @@ savingsMode = False#visual#True
 loanMode = savingsMode#False#visual#True
 
 importMode = True
-exportMode = True#False
+exportMode = False
 seasonalMode = True#False
 heatMode = True#False
 heatOn = True#False #allows for the heatmap to turn on dynamically
@@ -51,6 +51,7 @@ seedingMode = False
 autoMode = False#True #runs through several iterations of the simulation
 clearingMode = False
 swapMode = True#False
+growthMode = False
 bondingMode = False
 
 NCHEAT = True
@@ -60,12 +61,13 @@ num_con = 4
 saveImageMode = False
 moveTrader= False
 MINPUSAGECC = 0.99
-PATH_LENGTH = 5
+PATH_LENGTH = 4
 
 swap_pools = []
 all_agents_inpools = []
 all_vouchers_inpools = []
 
+MAX_CONNECTORS = 5
 G = nx.Graph()
 
 if displayPlots == False:
@@ -169,6 +171,9 @@ os.environ['SDL_VIDEO_CENTERED'] = '1'
 
 TRADEMOVERATE = 3#10#how fast are trades completed
 DAILYCYCLES = 50#200#number of game cycles equalling one day
+
+lastMycoGrowthCycle = 0
+waitToMycoGrowthCycles = DAILYCYCLES*2
 
 clickedTrader=1#-1#used for interface
 clickedToken=-1#-1#used for interface
@@ -294,7 +299,7 @@ wormNCInnerSegmentRect.fill(DARKORANGE)# this fills the entire surface
 try:
     ccImage = pygame.image.load('nc.png')
     ncImage = pygame.image.load('cc.png')
-    mycoImage = pygame.image.load('myco.png')
+    mycoImage = pygame.image.load('myco_sm.png')
     retailShopImage = pygame.image.load('shop-green.png')
     foreignRetailShopImage = pygame.image.load('shop-red.png')
     serviceShopImage = pygame.image.load('services.png')
@@ -434,7 +439,6 @@ endCycle = 66*ONEYEAR#STARTDATE+timedelta(months=18)#1*ONEYEAR+8*MONTH
 repeatCycle = 0#2*ONEYEAR#500*DAILYCYCLES#MONTH#0.25*MONTH#1*ONEYEAR # how long to run in repeatMode
 numRepeatsTot = 1
 
-
 lastRepeatCycle = 0
 lastRepeatCycleTicks = 0
 numRepeats = 0
@@ -558,7 +562,7 @@ def toggleBondingMode(onswitch):
                     topToken = cci.token
             if topToken is not None:
                 tt.preferedToken = topToken
-                print ("prefered token", utils.currencyTypeToString(topToken.tokenID))
+                #print ("prefered token", utils.currencyTypeToString(topToken.tokenID))
 
 
 
@@ -1036,8 +1040,24 @@ def generateTradeBuddies(playerList):
 
         #ensure that one of each type of partner exists
 
-        #print("Finding Buddies1")
+        #print("Finding Buddies1 in pools")
 
+
+        #Find out if he belongs in any pool and readjust buddies
+        if(dude in all_agents_inpools):
+            #find all possible
+            for theTradeBuddy in all_agents_inpools:
+                if(theTradeBuddy.tIndex != dude.tIndex):
+                    feasible_paths = utils.find_feasible_paths(G, dude.preferedToken, theTradeBuddy.preferedToken, 1,PATH_LENGTH,swap_pools)
+                    if(feasible_paths):
+                        if(len(dude.tradeBuddies) < dude.numTradePartners):
+                            if(theTradeBuddy.localSelling==True and theTradeBuddy.subType!=utils.MYCOAGENT):
+                                dude.tradeBuddies.append(theTradeBuddy)
+                        else:
+                            break
+
+
+        
         currentSearchSize = NEIGHBORSEARCHSIZE
         #neighborsList = generateTradeNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners) ######THE1
         neighborsList = generateNeighbors(dude,currentList,currentSearchSize,dude.numTradePartners)
@@ -1051,6 +1071,8 @@ def generateTradeBuddies(playerList):
         while len(dude.tradeBuddies) < dude.numTradePartners and currentSearchSize < MAXNEIGHBORSEARCHSIZE:
             #print("Finding Buddies3")
 
+
+            
             neighborLen = len(neighborsList)-1
             #print ("neighbors: ", neighborLen)
 
@@ -1583,13 +1605,14 @@ class Trade:
                 if(len(self.path)>=2):
                     #print("~~Path >= 2 sending on to next pool")
                     start_voucher_id, end_voucher_id = self.path[0], self.path[1]
-                    pool_name = G[start_voucher_id][end_voucher_id]['pool']
-                    #print("first poolall on routes:", pool_name)
-                    pool = next(pool for pool in swap_pools if pool.tIndex == pool_name)
+                    pool_name = G[start_voucher_id][end_voucher_id].get('pool',None)
+                    if(pool_name != None):
+                        #print("first poolall on routes:", pool_name)
+                        pool = next(pool for pool in swap_pools if pool.tIndex == pool_name)
 
-                    newTradeCCa = Trade(self.path[0],self.money,self.tradeType,self.dest,pool,next_voucher.token,self.path)
-                    self.dest.addTrade(newTradeCCa)
-                    self.dest.lastCCTradeCycle = cycles
+                        newTradeCCa = Trade(self.path[0],self.money,self.tradeType,self.dest,pool,next_voucher.token,self.path)
+                        self.dest.addTrade(newTradeCCa)
+                        self.dest.lastCCTradeCycle = cycles
                 elif(len(self.path)==1): #send to final Agent
                     #print("~~Path = 1 sending out the last trade on path")
                     end_voucher_id = self.path[0]
@@ -2176,7 +2199,7 @@ class Trader:
         self.localSelling = True#False
         self.rect=self.image.get_rect(topleft=(self.locx,self.locy))
 
-    def create_swap_pool(self,click_pos,num_c):
+    def create_swap_pool(self,click_pos,num_c,newAgentsOnly,oldAgent, agentList):
         """
         Create a SwapPool at the click position, connecting the closest agents, and assign random vouchers.
 
@@ -2187,17 +2210,22 @@ class Trader:
         dict: A dictionary representing the new SwapPool.
         """
         global traders, swap_pools
-        #global zpos, swap_pools, all_agents, all_agents_inpools, all_vouchers_inpools
+        global all_agents_inpools
 
         self.cc = []
 
         self.buddies = []
 
         print("new SwapPool")
+        closest_agents = []
 
-        closest_agents = utils.find_closest_agents(click_pos,num_c,traders)
+        if(newAgentsOnly):
+            closest_agents = agentList
+        else:
+            closest_agents = utils.find_closest_agents(click_pos,num_c,traders)
 
-        print("Close Agents: ",closest_agents)
+
+        #print("Close Agents: ",closest_agents)
 
         if(len(closest_agents) >=1):
 
@@ -2206,7 +2234,6 @@ class Trader:
                 if agent.tIndex == self.tIndex or agent.subType == utils.MYCOAGENT: #ignore self
                     print("Ignore mirror or other MYCO")
                     continue
-                
                 # Assuming each agent has a 'vouchers' attribute
                 # Modify this part based on how vouchers are stored and managed
                 #print("agent: ", agent)
@@ -2218,7 +2245,7 @@ class Trader:
                 
                 wToken = WalletToken(voucher, amount)
                 self.cc.append(wToken)
-                agent.cc[0].balance -= amount
+                #agent.cc[0].balance -= amount #debug
                 self.tradeBuddies.append(agent)
                 if agent not in all_agents_inpools:
                     all_agents_inpools.append(agent)
@@ -3041,12 +3068,17 @@ class Trader:
 
 
 
-
     #General trade and converstion to CC
     def logistics(self):
         global cycles, theTradeBuddy
         global lastTokenID
         global lastColorTokenIndex
+        global G
+        global lastMycoGrowthCycle
+        global waitToMycoGrowthCycles
+        global all_agents_inpools
+        global num_con
+        
         alreadyImporting = False
         alreadyBanking = False
         if len(self.trades) > 0:
@@ -3206,7 +3238,7 @@ class Trader:
                     # new logistics
                     if(len(swap_pools) >0): #theTradeBuddy.subType != utils.FOREIGNRETAIL:
                         #print("Try to make a CC trade with pools!", tradeCCAmt)
-                        if(self.preferedToken != None and theTradeBuddy.preferedToken.tokenID != None):
+                        if(self.preferedToken != None and theTradeBuddy.preferedToken != None):
                             if(self.preferedToken.tokenID in G and theTradeBuddy.preferedToken.tokenID in G):
                                 #print(">>>>>>>>Both Tokens in the Graph!")
                                 feasible_paths = utils.find_feasible_paths(G, self.preferedToken, theTradeBuddy.preferedToken, tradeCCAmt,PATH_LENGTH,swap_pools)
@@ -3220,24 +3252,103 @@ class Trader:
                                     utils.print_exchange_route(G, best_path)
                                     #we need to send a Trade to the 1st pool. Once it has arrived, send another trade to the next pool and so on
                                     start_voucher_id, end_voucher_id = best_path[0], best_path[1]
-                                    pool_name = G[start_voucher_id][end_voucher_id]['pool']
-                                    #print("**AGENT initiating**: ",self.tIndex, "type: ", self.subType, utils.traderTypeToString(self.subType), "first pool:", pool_name, " amount trading: ", tradeCCAmt)
-                                    pool = next(pool for pool in swap_pools if pool.tIndex == pool_name)
-                                    newTradeCCa = Trade(self.preferedToken.tokenID,tradeCCAmt,tradeType,self,pool,self.preferedToken,best_path)
-                                    self.addTrade(newTradeCCa)
-                                    self.lastCCTradeCycle = cycles
-                                    if(False): #debug on CC trade
-                                        print(utils.traderTypeToString(self.subType), "Made a CC Trade! to: ", utils.traderTypeToString(theTradeBuddy.subType), " amt: ", tradeCCAmt, " waiting: ", self.waitToTradeCycles, " seepdFactor: ", tradeSpeedFactor, " CC: ", self.getCCValue())
-                                        totalCC = 0
-                                        totalNC = 0
-                                        for t in traders:
-                                            vale = t.getCCValue()
-                                            print("   -- ", utils.traderTypeToString(t.subType), " amtcc: ", vale)
-                                            for cc in t.cc:
-                                                print("       cc val: ", cc.token.tokenID, cc.balance)
-                                            totalCC += t.getCCValue()
+                                    pool_name = G[start_voucher_id][end_voucher_id].get('pool',None)
+                                    if(pool_name != None):
+                                        #print("**AGENT initiating**: ",self.tIndex, "type: ", self.subType, utils.traderTypeToString(self.subType), "first pool:", pool_name, " amount trading: ", tradeCCAmt)
+                                        pool = next(pool for pool in swap_pools if pool.tIndex == pool_name)
+                                        newTradeCCa = Trade(self.preferedToken.tokenID,tradeCCAmt,tradeType,self,pool,self.preferedToken,best_path)
+                                        self.addTrade(newTradeCCa)
+                                        self.lastCCTradeCycle = cycles
+                                        if(False): #debug on CC trade
+                                            print(utils.traderTypeToString(self.subType), "Made a CC Trade! to: ", utils.traderTypeToString(theTradeBuddy.subType), " amt: ", tradeCCAmt, " waiting: ", self.waitToTradeCycles, " seepdFactor: ", tradeSpeedFactor, " CC: ", self.getCCValue())
+                                            totalCC = 0
+                                            totalNC = 0
+                                            for t in traders:
+                                                vale = t.getCCValue()
+                                                print("   -- ", utils.traderTypeToString(t.subType), " amtcc: ", vale)
+                                                for cc in t.cc:
+                                                    print("       cc val: ", cc.token.tokenID, cc.balance)
+                                                totalCC += t.getCCValue()
 
-                                        print("<><><>total CC: ", totalCC)
+                                            print("<><><>total CC: ", totalCC)
+
+        if(growthMode):
+
+            #attempt to create a small pool.
+            # find the nearest with no pools or agents around
+        
+            if(self.getCCValue() > (self.STARTSTOCK+self.STARTSERVICES)/10 and self in all_agents_inpools and cycles - lastMycoGrowthCycle >= waitToMycoGrowthCycles) :
+                #print("Grow Mode: cc", self.getCCValue(), " startingx2: ", (self.STARTSTOCK+self.STARTSERVICES)/2)
+                      
+                agent_pos = self.rect.center#zpos[agent.name]
+                #print(agent.name, " pos: ", agent_pos, " agents in pools: ", all_agents_inpools)
+
+                set1 = set(traders)
+                set2 = set(all_agents_inpools)
+                agents_not_in_pools = set1- set2
+
+                all_points = []
+                final_agents = []
+
+                close_agents = utils.find_closest_agents(agent_pos,4,agents_not_in_pools)#find_closest_agents(agent_pos, 8)
+                #close_agents.insert(0,self)
+                created_new = False
+
+                final_agents.append(self)
+                all_points.append(self.rect.center)
+                
+                #check if the agents are close enough
+                for new_agent in close_agents:
+                    if utils.is_within_circle(new_agent.rect.center[0], new_agent.rect.center[1], self.rect.center[0], self.rect.center[1], STARTSIZE*30):
+                        final_agents.append(new_agent)
+                        all_points.append(new_agent.rect.center)
+
+                if(len(final_agents) > 1):
+                    all_midpoint = utils.find_midpoint(all_points)
+                    collision = False
+                    for tagent in traders :
+                        #check if collions
+                        if(utils.is_within_circle(tagent.rect.center[0], tagent.rect.center[1], all_midpoint[0], all_midpoint[1], STARTSIZE*3)):
+                            collision = True
+                    if(collision == False):
+                        new_pool = Trader(utils.GENERIC,100,100,len(traders))
+                        new_pool.setupMycoAgent()
+                        new_pool.create_swap_pool(all_midpoint,len(final_agents),True,self,final_agents) #baby pool
+                        #pMYCOAGENT += 1
+                        new_pool.rect.center = all_midpoint
+                        new_pool.locx = new_pool.rect.left
+                        new_pool.locy = new_pool.rect.top
+
+                        swap_pools.append(new_pool)
+                        #print("Create New Graph from pools:" , swap_pools)
+                        G = utils.make_graph(swap_pools)
+                        #print("created Graph:" , G)
+
+                        traders.append(new_pool)
+                        lastMycoGrowthCycle = cycles
+                        created_new = True
+
+                        generateTradeBuddies(traders)
+
+                        #x INFOWIDTH+OFFSETWIDTH+BORDERWIDTH+STARTSIZE
+                        #y OFFSETHEIGHT+BORDERHEIGHT
+                        print(" created baby pool! pos:", all_midpoint)
+
+        #The agent has nutrition but can't find a new place to put a pool should add an arm to an existing pool if the pool has less than 4 vouchers already
+
+            if(False and self.getCCValue() > 2*(self.STARTSTOCK+self.STARTSERVICES)): 
+                    close_pools = find_closest_pool(agent_pos, 4)
+                    created_new_branch = False
+                    #print(" close Pools: ", close_pools)
+                    for close_pool in close_pools:
+                        if created_new_branch == False:
+                            zclose_pool = next((pool for pool in swap_pools if pool.name == close_pool),None)
+                            num_branches = len(zclose_pool.vouchers)
+                            if num_branches < MAX_CONNECTORS:
+                                update_swap_pool(close_pool,num_branches+1,zpos[close_pool])
+                                created_new_branch = True
+                                agent.nutrients = agent.nutrients - 10*num_branches
+
 
 
 
@@ -3759,7 +3870,14 @@ while runSim:
                     TRADEMOVERATE -= 1
                     if(TRADEMOVERATE < 2):
                         TRADEMOVERATE = 1
-                    
+
+                elif event.key == pygame.K_g:
+                    if(growthMode):
+                        growthMode = False
+                    else:
+                        growthMode = True
+                    print("Toggle GrowthMode: ", growthMode)
+
                 elif event.key == pygame.K_2:
                     num_con = 2
                 elif event.key == pygame.K_3:
@@ -3818,6 +3936,14 @@ while runSim:
                     traders = []
                     del tokens[:]
                     tokens = []
+                    del swap_pools[:]
+                    swap_pools = []
+                    
+                    del all_agents_inpools[:]
+                    all_agents_inpools = []
+                    del all_vouchers_inpools[:]
+                    all_vouchers_inpools = []
+                    
                     tokenSprites.empty()
 
 
@@ -4133,6 +4259,30 @@ while runSim:
                         pRETAIL = pRETAIL - 1
                     elif straderType == utils.FOREIGNRETAIL:
                         pFOREIGNRETAIL = pFOREIGNRETAIL - 1
+                    elif straderType == utils.MYCOAGENT:
+                        swap_pools.remove(traders[clickedTrader])
+                        #return ccs
+                        for cc in traders[clickedTrader].cc: 
+                            agent = next(agent for agent in traders if agent.preferedToken.tokenID == cc.token.tokenID)
+                            agent.cc[0].balance += cc.balance
+                            cc.balance = 0
+
+                            del all_agents_inpools[:]
+                            all_agents_inpools = []
+                            del all_vouchers_inpools[:]
+                            all_vouchers_inpools = []
+
+                            for pool in swap_pools:
+                                for v in pool.cc:
+                                    vagent = next((vagent for vagent in traders if vagent.preferedToken.tokenID == v.token.tokenID),None)
+                                    if vagent != None:
+                                        all_agents_inpools.append(vagent)
+                                        all_vouchers_inpools.append(v)
+                            G = utils.make_graph(swap_pools)
+
+                                    
+                            
+                        pFOREIGNRETAIL = pMYCOAGENT - 1
 
 
 
@@ -4185,11 +4335,11 @@ while runSim:
                     if traders[clickedTrader].subType==utils.MYCOAGENT:
                         print("Setup pool with nearest (num_con)")
                         click_pos = pygame.mouse.get_pos()
-                        traders[clickedTrader].create_swap_pool(click_pos,num_con)
+                        traders[clickedTrader].create_swap_pool(click_pos,num_con,False,None,None)
                         swap_pools.append(traders[clickedTrader])
-                        print("Create New Graph from pools:" , swap_pools)
+                        #print("Create New Graph from pools:" , swap_pools)
                         G = utils.make_graph(swap_pools)
-                        print("created Graph:" , G)
+                        #print("created Graph:" , G)
 
                 print("Generating buddies")
                 generateTradeBuddies(traders)
@@ -4259,7 +4409,7 @@ while runSim:
             #print "drawing myself: ", b.color, b.fill
             #b.drawSelf(background)
 
-            if b.subType != utils.MYCOAGENT:
+            if b.subType != utils.MYCOAGENT: #debug
                 b.logistics()
 
             for trade in b.trades:
